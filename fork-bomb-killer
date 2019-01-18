@@ -24,8 +24,12 @@ for s in status_list:
     status_names.append(s.split(':')[0])
 
 ppid_index = status_names.index('PPid')
+uid_index = status_names.index('Uid')
 
-####################################################################################################
+PROC_NUM = 500
+TIME = 5
+
+##########################################################################
 
 # FUNCS
 
@@ -39,6 +43,21 @@ def rline1(path):
         return ''
     except ProcessLookupError:
         return ''
+
+
+def pid_to_uid(pid):
+    '''return euid'''
+    try:
+
+        with open('/proc/' + pid + '/status') as f:
+            for n, line in enumerate(f):
+                if n is uid_index:
+                    return line.split('\t')[2]
+    except FileNotFoundError:
+        return ''
+    except ProcessLookupError:
+        return ''
+
 
 def pid_to_name(pid):
     try:
@@ -65,9 +84,10 @@ def pid_to_ppid(pid):
 
 def pid_to_cmdline(pid):
     try:
-        with open('/proc/' + pid + '/cmdline') as file:
+        with open('/proc/' + pid + '/cmdline') as f:
             try:
-                return file.readlines()[0].replace('\x00', ' ').strip()
+                for line in f:
+                    return line.replace('\x00', ' ').strip()
             except IndexError:
                 return ''
     except FileNotFoundError:
@@ -88,7 +108,8 @@ def pid_to_state(pid):
 
 
 def find_bomb_pattern(pid_set):
-    print('find bomb pattern')
+    # need rename to find_bomb_name
+    print('Find name of bomb processes')
     t0 = time()
     name_dict = dict()
     for pid in pid_set:
@@ -101,8 +122,77 @@ def find_bomb_pattern(pid_set):
             name_dict[name] += 1
     x = name_dict.items()
     y = sorted(x, key=itemgetter(1))
-    print(x)
-    print(y)
+    print(y[::-1][:9])
+    print('Time:', round(time() - t0, 3))
+    return y[-1][0]
+
+
+def find_bomb_cmdline():
+    print('Find bomb cmdline')
+    t0 = time()
+    cmdline_dict = dict()
+    for pid in os.listdir('/proc'):
+        if pid[0].isdecimal() is False or pid is '1' or pid == self_pid or pid_to_state(
+                pid) != 'T':
+            continue
+        cmdline = pid_to_cmdline(pid)
+        if cmdline == '':
+            continue
+        if cmdline not in cmdline_dict:
+            cmdline_dict[cmdline] = 1
+        else:
+            cmdline_dict[cmdline] += 1
+    x = cmdline_dict.items()
+    y = sorted(x, key=itemgetter(1))
+    print(y[::-1][:9])
+    print(time() - t0)
+    try:
+        return y[-1][0]
+    except IndexError:
+        return ''
+
+
+def find_bomb_uid():
+    print('Find bomb eUID')
+    t0 = time()
+    uid_dict = dict()
+    for pid in os.listdir('/proc'):
+        if pid[0].isdecimal() is False or pid is '1' or pid == self_pid or pid_to_state(
+                pid) != 'T':
+            continue
+        uid = pid_to_uid(pid)
+        if uid == '':
+            continue
+        if uid not in uid_dict:
+            uid_dict[uid] = 1
+        else:
+            uid_dict[uid] += 1
+    x = uid_dict.items()
+    y = sorted(x, key=itemgetter(1))
+    print(y[::-1][:9])
+    print(time() - t0)
+    return y[-1][0]
+
+
+def find_bomb_ppid():
+    print('Find bomb PPid')
+    t0 = time()
+    ppid_dict = dict()
+    for pid in os.listdir('/proc'):
+        if pid[0].isdecimal() is False or pid is '1' or pid == self_pid or pid_to_state(
+                pid) != 'T':
+            continue
+        ppid = pid_to_ppid(pid)
+        if ppid == '':
+            continue
+        if ppid not in ppid_dict:
+            ppid_dict[ppid] = 1
+        else:
+            ppid_dict[ppid] += 1
+    x = ppid_dict.items()
+    y = sorted(x, key=itemgetter(1))
+    print('Number of unique PPids:', len(y))
+    print(y[::-1][:9])
     print(time() - t0)
     return y[-1][0]
 
@@ -120,27 +210,24 @@ def stop_the_world1(bomb_name):
                 pass
             except ProcessLookupError:
                 pass
-            # print('stop PID', pid)
             stop_counter += 1
-    print('total stopped:', stop_counter)
     return stop_counter
 
 
 def stop_the_world(bomb_name):
-    print('Start stop the world', bomb_name)
+    print('Send SIGSTOP to bomb processes:', bomb_name)
     time0 = time()
     x0 = -1
     while True:
         x = stop_the_world1(bomb_name)
         if x == x0:
-            stop_the_world1(bomb_name)
-            print('total stop time:', round(time() - time0, 2))
+            print('Total stop time:', round(time() - time0, 3))
             return None
         x0 = x
 
 
 def kill_stopped(bomb_name):
-    print('Kill stopped procs')
+    print('Send SIGKILL to stopped processes')
     t0 = time()
     kill_counter = 0
     for pid in os.listdir('/proc'):
@@ -157,23 +244,29 @@ def kill_stopped(bomb_name):
         except ProcessLookupError:
             state = ''
 
-        ppid = pid_to_ppid(pid)
+        cmdline = pid_to_cmdline(pid)
 
-        if name == bomb_name and state == 'T' and pid != self_pid and pid != self_ppid and pid != self2_ppid:
+        if name == bomb_name and cmdline == bomb_cmdline and state == 'T':
 
             try:
                 os.kill(int(pid), SIGKILL)
+                kill_counter += 1
             except FileNotFoundError:
                 pass
             except ProcessLookupError:
                 pass
-            kill_counter += 1
 
-    print('Number of killed procs:', kill_counter, '\nKill time:', round(time() - t0, 2))
+    print(
+        'Number of killed processes:',
+        kill_counter,
+        '\nKill time:',
+        round(
+            time() - t0,
+            3))
 
 
 def cont_stopped(bomb_name):
-    print('Cont stopped procs')
+    print('Send SIGCONT to innocent victims')
     t0 = time()
     cont_counter = 0
     for pid in os.listdir('/proc'):
@@ -184,42 +277,54 @@ def cont_stopped(bomb_name):
 
         if state == 'T' and name == bomb_name:
             try:
+                cmdline = pid_to_cmdline(pid)
                 os.kill(int(pid), SIGCONT)
-                print(pid, name, ": CONT_THIS")
+                cont_counter += 1
+                print(' ', pid, name, [cmdline])
             except FileNotFoundError:
                 pass
             except ProcessLookupError:
                 pass
-            cont_counter += 1
 
-    print('Cont procs:', cont_counter)
-
-
-####################################################################################################
+    print('Number of continued:', cont_counter)
 
 
-print(self_pid, 'SELF PID', pid_to_name(self_pid))
-self_ppid = pid_to_ppid(self_pid)
-print(self_ppid, 'SELF PPID', pid_to_name(self_ppid))
-self2_ppid = pid_to_ppid(self_ppid)
-print(self2_ppid, 'SELF PPPID', pid_to_name(self2_ppid))
+##########################################################################
 
 pid_set = set(os.listdir('/proc'))
 
 print('Fork bomb detecting started!')
 
 while True:
-    sleep(1)
-    #print(pid_set)
+    sleep(TIME)
     new_set = set(os.listdir('/proc'))
-    #print(new_set)
     delta = new_set - pid_set
-    #print(delta)
     pid_set = new_set
-    if len(delta) > 500:
+    if len(delta) > PROC_NUM:
+        t0 = time()
+        print(
+            'Fork bomb detected! Spawned {} processess in {} seconds'.format(
+                len(delta), TIME))
         bomb_name = find_bomb_pattern(delta)
         stop_the_world(bomb_name)
+        print('Analyze stopped processes...')
+        bomb_cmdline = find_bomb_cmdline()
+        bomb_uid = find_bomb_uid()
+        bomb_ppid = find_bomb_ppid()
+        if bomb_ppid != '1':
+            print(
+                'Try to killing bomb parent: {}, {}'.format(
+                    bomb_ppid,
+                    pid_to_name(bomb_ppid)))
+            os.kill(int(bomb_ppid), SIGKILL)
+        print("Analysis complete. It's time to kill!")
         kill_stopped(bomb_name)
         cont_stopped(bomb_name)
 
-
+        print(
+            'Fork bomb is deactivated in {} seconds'.format(
+                round(time() - t0, 3)),
+            '\n  Bomb name:   ', bomb_name,
+            '\n  Bomb cmdline:', bomb_cmdline,
+            '\n  Bomb eUID:   ', bomb_uid,
+            '\n  Bomb PPid:   ', bomb_ppid, '\n', '=' * 78)
