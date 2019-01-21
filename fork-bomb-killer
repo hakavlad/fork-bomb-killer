@@ -4,11 +4,12 @@ Fork bomb detector and deactvator
 :(){ :|:& };:
 while true; do bash -c ':(){ :|:& };: &'; done
 perl -MPOSIX -e '$pid=fork; exit if $pid; setid; fork while(1)'
-while true; do (sleep 9999 &); done
+while true; do (sleep 60 &); done
 perl -e "fork while fork" &
 echo '. ./_&. ./_'>_;. ./_
 """
 import os
+from sys import stdout
 from operator import itemgetter
 from time import sleep, time
 from signal import SIGKILL, SIGSTOP, SIGCONT
@@ -26,8 +27,9 @@ for s in status_list:
 ppid_index = status_names.index('PPid')
 uid_index = status_names.index('Uid')
 
-PROC_NUM = 500
+PROC_NUM = 1000
 TIME = 5
+PRINT_NPROC = 10
 
 ##########################################################################
 
@@ -295,11 +297,20 @@ pid_set = set(os.listdir('/proc'))
 
 print('Fork bomb detecting started!')
 
+stdout.flush()
+
+
 while True:
+    stdout.flush()
     sleep(TIME)
     new_set = set(os.listdir('/proc'))
     delta = new_set - pid_set
     pid_set = new_set
+
+    if len(delta) > PRINT_NPROC:
+        print('Spawned {} processes in last {} sec'.format(len(delta), TIME))
+
+
     if len(delta) > PROC_NUM:
         t0 = time()
         print(
@@ -328,3 +339,4 @@ while True:
             '\n  Bomb cmdline:', bomb_cmdline,
             '\n  Bomb eUID:   ', bomb_uid,
             '\n  Bomb PPid:   ', bomb_ppid, '\n', '=' * 78)
+

@@ -1,0 +1,21 @@
+[Unit]
+Description=Fork bomb detector and deactivator for Linux
+After=sysinit.target
+
+[Service]
+ExecStart=/usr/sbin/fork-bomb-killer
+Slice=fork-bomb-killer.slice
+Restart=always
+ProtectSystem=strict
+MemoryMax=100M
+TasksMax=100
+OOMScoreAdjust=-10
+Nice=-20
+IOSchedulingClass=1
+IOSchedulingPriority=0
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=99
+CPUSchedulingResetOnFork=true
+
+[Install]
+WantedBy=multi-user.target
